@@ -170,6 +170,6 @@ def scan_and_send_result(chat_id, urls, params):
 
     bot.send_message(chat_id, message)
 
-if name == 'main':
+if __name__ == '__main__':
     print("ربات شروع به کار کرد...")
     bot.infinity_polling()
