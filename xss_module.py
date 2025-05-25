@@ -1,4 +1,3 @@
-
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse, parse_qsl
@@ -12,7 +11,6 @@ try:
 except ImportError:
     SELENIUM_AVAILABLE = False
 
-# پارامترهای رایج که برای تست XSS استفاده می‌شوند
 COMMON_PARAMS = [
     "q", "s", "search", "query", "keyword", "id", "item", "page", "ref",
     "lang", "cat", "type", "view", "next", "redirect", "url", "dest",
@@ -20,7 +18,7 @@ COMMON_PARAMS = [
 ]
 
 class XSSScan:
-    def init(self, callback_url=None, timeout=10, use_selenium=False, headers=None):
+    def __init__(self, callback_url=None, timeout=10, use_selenium=False, headers=None):
         self.name = "XSS Scan"
         self.timeout = timeout
         self.callback_url = callback_url
@@ -104,9 +102,7 @@ class XSSScan:
                             vulnerable.append({
                                 'url': test_url,
                                 'param': param_key,
-
-
-'payload': test_payload,
+                                'payload': test_payload,
                                 'method': 'GET',
                                 'context': context,
                                 'type': 'Reflected (Param)'
@@ -201,8 +197,7 @@ class XSSScan:
                 urls.append(f"{base_url}&{param}={payload}")
         return urls
 
-
-def run(self, url, params_to_test=None):
+    def run(self, url, params_to_test=None):
         self.vulnerable.clear()
         self.log(f"شروع اسکن XSS روی {url}")
 
