@@ -165,7 +165,7 @@ def cmd_addreferral(message):
         bot.send_message(message.chat.id, "شما دسترسی ادمین ندارید.")
         return
     bot.send_message(message.chat.id, "آیدی تلگرام کاربری که رفرال گرفته را بفرستید:")
-    user_states[message.chat.id] = STATE_AWAITING_LICENSE_USERID
+    user_states[message.from_user.id] = STATE_AWAITING_LICENSE_USERID
 
 @bot.message_handler(commands=['removelicense'])
 def cmd_removelicense(message):
@@ -173,9 +173,9 @@ def cmd_removelicense(message):
         bot.send_message(message.chat.id, "شما دسترسی ادمین ندارید.")
         return
     bot.send_message(message.chat.id, "آیدی تلگرام کاربری که می‌خواهید لایسنسش را حذف کنید بفرستید:")
-    user_states[message.chat.id] = STATE_AWAITING_LICENSE_REMOVE_USERID
+    user_states[message.from_user.id] = STATE_AWAITING_LICENSE_REMOVE_USERID
 
-@bot.message_handler(func=lambda m: user_states.get(m.chat.id) == STATE_AWAITING_LICENSE_USERID)
+@bot.message_handler(func=lambda m: user_states.get(m.from_user.id) == STATE_AWAITING_LICENSE_USERID)
 def handle_add_referral(message):
     try:
         ref_user_id = message.text.strip()
@@ -185,7 +185,6 @@ def handle_add_referral(message):
         referrals[ref_user_id] = referrals.get(ref_user_id, 0) + 1
         save_data()
         bot.send_message(message.chat.id, f"رفرال به کاربر {ref_user_id} اضافه شد.")
-        # اگر رفرال به حد نصاب رسید و کاربر لایسنس ندارد، 7 روز اشتراک رایگان بده
         if referrals[ref_user_id] >= REFERRAL_REQUIRED and not is_authorized(ref_user_id):
             expiry = datetime.datetime.now() + datetime.timedelta(days=7)
             user_licenses[ref_user_id] = {
@@ -196,12 +195,12 @@ def handle_add_referral(message):
             }
             save_data()
             bot.send_message(int(ref_user_id), "شما به خاطر آوردن ۴ رفرال، ۷ روز اشتراک رایگان دریافت کردید.")
-        user_states.pop(message.chat.id, None)
+        user_states.pop(message.from_user.id, None)
     except Exception as e:
         bot.send_message(message.chat.id, f"خطا: {str(e)}")
-        user_states.pop(message.chat.id, None)
+        user_states.pop(message.from_user.id, None)
 
-@bot.message_handler(func=lambda m: user_states.get(m.chat.id) == STATE_AWAITING_LICENSE_REMOVE_USERID)
+@bot.message_handler(func=lambda m: user_states.get(m.from_user.id) == STATE_AWAITING_LICENSE_REMOVE_USERID)
 def handle_remove_license(message):
     try:
         rem_user_id = message.text.strip()
@@ -215,105 +214,104 @@ def handle_remove_license(message):
             bot.send_message(int(rem_user_id), "لایسنس شما توسط ادمین حذف شد.")
         else:
             bot.send_message(message.chat.id, "این کاربر لایسنس ندارد.")
-        user_states.pop(message.chat.id, None)
+        user_states.pop(message.from_user.id, None)
     except Exception as e:
         bot.send_message(message.chat.id, f"خطا: {str(e)}")
-        user_states.pop(message.chat.id, None)
-
-@bot.message_handler(commands=['contact'])
-def cmd_contact(message):
-    bot.send_message(message.chat.id, "برای ارتباط با ادمین، لطفاً به آیدی زیر پیام دهید:\n@Unkdowns")
+        user_states.pop(message.from_user.id, None)
 
 @bot.message_handler(content_types=['text'])
 def handle_text(message):
     user_id = message.from_user.id
     chat_id = message.chat.id
-    text = message.text.strip()
 
     if not check_membership(user_id):
         bot.send_message(chat_id, f"لطفاً ابتدا عضو کانال @{REQUIRED_CHANNEL} شوید تا بتوانید از ربات استفاده کنید.")
         return
 
-    urls = text.split()
+    # دریافت لینک‌ها از متن و جدا کردن با فاصله
+    urls = message.text.split()
     if len(urls) == 0:
-        bot.send_message(chat_id, "لطفاً حداقل یک لینک برای اسکن ارسال کنید.")
+        bot.send_message(chat_id, "لطفاً لینک یا لینک‌های معتبر ارسال کنید.")
         return
 
-    can_use_flag, left = can_use(user_id, len(urls))
-    if not can_use_flag:
-        if left is not None and left <= 0:
-            bot.send_message(chat_id, "شما به حد استفاده مجاز امروز رسیدید. لطفا فردا مجدد تلاش کنید یا لایسنس تهیه کنید.")
-        else:
-            bot.send_message(chat_id, f"شما فقط {left} لینک دیگر می‌توانید اسکن کنید.")
+    # محدودیت تعداد لینک‌ها (مثلاً 20)
+    if len(urls) > MAX_TARGET_FILE_LINES:
+        urls = urls[:MAX_TARGET_FILE_LINES]
+        bot.send_message(chat_id, f"فقط ۲۰ لینک اول پردازش می‌شوند.")
+
+    allowed, remaining = can_use(user_id, len(urls))
+    if not allowed:
+        bot.send_message(chat_id, f"شما مجاز به اسکن این تعداد لینک نیستید. با لایسنس محدودیت روزانه ۳۰ لینک وجود دارد.\n"
+                                 f"باقی مانده تعداد لینک قابل اسکن: {remaining if remaining is not None else 0}")
         return
 
-    bot.send_message(chat_id, "اسکن شروع شد، لطفاً کمی صبر کنید...")
-    threading.Thread(target=scan_and_send_result, args=(chat_id, urls, [])).start()
+    bot.send_message(chat_id, "شروع اسکن... لطفاً صبر کنید.")
+    update_usage(user_id, len(urls))
+
+    # ایجاد نمونه اسکنر (کد فرضی)
+    scanner = XSSScan(urls)
+    results = scanner.scan()
+
+    response_text = "نتایج اسکن:\n"
+    for url, vulnerable in results.items():
+        response_text += f"{url} : {'آسیب‌پذیر' if vulnerable else 'امن'}\n"
+
+    bot.send_message(chat_id, response_text)
 
 @bot.message_handler(content_types=['document'])
 def handle_document(message):
     user_id = message.from_user.id
     chat_id = message.chat.id
+
     if not check_membership(user_id):
         bot.send_message(chat_id, f"لطفاً ابتدا عضو کانال @{REQUIRED_CHANNEL} شوید تا بتوانید از ربات استفاده کنید.")
         return
 
     file_info = bot.get_file(message.document.file_id)
     downloaded_file = bot.download_file(file_info.file_path)
-    filename = message.document.file_name
 
-    if not filename.endswith(".txt"):
-        bot.send_message(chat_id, "لطفاً فقط فایل متنی با پسوند .txt ارسال کنید.")
+    # ذخیره فایل موقتی
+    with open("target.txt", "wb") as f:
+        f.write(downloaded_file)
+
+    with open("target.txt", "r", encoding="utf-8") as f:
+        lines = f.readlines()
+
+    if len(lines) > MAX_TARGET_FILE_LINES:
+        lines = lines[:MAX_TARGET_FILE_LINES]
+        bot.send_message(chat_id, f"فقط ۲۰ خط اول فایل پردازش می‌شود.")
+
+    urls = [line.strip() for line in lines if line.strip()]
+    allowed, remaining = can_use(user_id, len(urls))
+    if not allowed:
+        bot.send_message(chat_id, f"شما مجاز به اسکن این تعداد لینک نیستید. با لایسنس محدودیت روزانه ۳۰ لینک وجود دارد.\n"
+                                 f"باقی مانده تعداد لینک قابل اسکن: {remaining if remaining is not None else 0}")
         return
 
-    # خواندن خطوط فایل
-    content = downloaded_file.decode("utf-8")
-    lines = content.strip().split("\n")
-    if len(lines) == 0:
-        bot.send_message(chat_id, "فایل ارسال شده خالی است.")
-        return
+    bot.send_message(chat_id, "شروع اسکن فایل... لطفاً صبر کنید.")
+    update_usage(user_id, len(urls))
 
-    # محدودیت تعداد خط ها
-    lines = lines[:MAX_TARGET_FILE_LINES]
+    scanner = XSSScan(urls)
+    results = scanner.scan()
 
-    # بررسی محدودیت تعداد لینک مجاز برای کاربر
-    can_use_flag, left = can_use(user_id, len(lines))
-    if not can_use_flag:
-        if left is not None and left <= 0:
-            bot.send_message(chat_id, "شما به حد استفاده مجاز امروز رسیدید. لطفاً فردا مجدد تلاش کنید یا لایسنس تهیه کنید.")
-        else:
-            bot.send_message(chat_id, f"شما فقط {left} لینک دیگر می‌توانید اسکن کنید.")
-        return
+    response_text = "نتایج اسکن:\n"
+    for url, vulnerable in results.items():
+        response_text += f"{url} : {'آسیب‌پذیر' if vulnerable else 'امن'}\n"
 
-    bot.send_message(chat_id, f"{len(lines)} لینک دریافت شد. اسکن شروع شد...")
-    threading.Thread(target=scan_and_send_result, args=(chat_id, lines, [])).start()
+    bot.send_message(chat_id, response_text)
 
-def scan_and_send_result(chat_id, urls, cookies):
-    try:
-        results = []
-        for url in urls:
-            result = XSSScan.scan(url, cookies)
-            results.append(f"[{url}]\n{result}\n{'='*40}")
-        bot.send_message(chat_id, "\n\n".join(results))
-        update_usage(chat_id, len(urls))
-    except Exception as e:
-        bot.send_message(chat_id, f"خطا در حین اسکن: {str(e)}")
+def keep_alive():
+    import time
+    import requests
+    while True:
+        try:
+            requests.get("https://your-render-app-url.onrender.com/")
+        except:
+            pass
+        time.sleep(300)
 
-# سرور Flask برای زنده نگه داشتن پروژه در Render
-from flask import Flask
-import threading
-
-app = Flask(__name__)
-
-@app.route('/')
-def home():
-    return "Bot is running."
-
-def run_flask():
-    app.run(host="0.0.0.0", port=8080)
-
-if __name__ == '__main__':
-    flask_thread = threading.Thread(target=run_flask)
-    flask_thread.start()
-    print("ربات راه‌اندازی شد.")
-    bot.infinity_polling()
+if __name__ == "__main__":
+    t = threading.Thread(target=keep_alive)
+    t.daemon = True
+    t.start()
+    bot.polling(non_stop=True)
