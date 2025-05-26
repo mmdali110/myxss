@@ -7,7 +7,7 @@ import os
 
 from xss_module import XSSScan
 
-API_TOKEN = "7614878121:AAGVEnTLaHSbIW_AER8nutDVGplxllxXIHc"
+API_TOKEN = "7614878121:AAGauhjuPlHF6x-8hqbFa0666nZtjvKXpKs"
 bot = telebot.TeleBot(API_TOKEN)
 
 ADMIN_USER_ID = 2082050164
